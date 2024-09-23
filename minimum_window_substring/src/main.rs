@@ -28,14 +28,14 @@ impl Solution {
                 if i != 0 {
                     positions.push_back(i);
                 }
-                // (only at start) if start pos isn't a relevant character move it up
-                if !t_map.contains_key(&s_chars[cur.0]) {
-                    cur.0 = positions.pop_front().unwrap();
-                }
 
                 // remove char from t_set if count <= 0
                 if *count <= 0 {
                     t_set.remove(&c);
+                }
+                // (only at start) if start pos isn't a relevant character move it up
+                if !t_map.contains_key(&s_chars[cur.0]) {
+                    cur.0 = positions.pop_front().unwrap();
                 }
 
                 // move start position --> as much as possible
