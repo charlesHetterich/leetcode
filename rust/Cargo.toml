@@ -3,4 +3,7 @@ name = "leetcode_rust"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.rustfmt]
+max_width = 50
+
 [dependencies]

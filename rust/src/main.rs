@@ -1,7 +1,9 @@
 mod problems;
 
 fn main() {
-    let s = String::from("aaabbb");
-    let result = problems::LS::Solution::length_of_longest_substring(s);
+    let p = 6;
+    let arr = vec![3, 1, 4, 2];
+    let result =
+        problems::MSD::Solution::min_subarray(arr, p);
     println!("Result: {}", result);
 }
