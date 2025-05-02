@@ -19,7 +19,8 @@ B is "branching factor" or "order". Meant for large volumes of data (SQL databas
 
 """
 
-K = TypeVar('T')
+K = TypeVar("T")
+
 
 class BTreeNode(Generic[K]):
     def __init__(self, order: int, keys: List[K] = []):
@@ -27,25 +28,25 @@ class BTreeNode(Generic[K]):
         self.keys = SortedList(keys)
         self.children: list[BTreeNode[K]] = []
 
-    def self_insert(self, key: K) -> tuple[K, 'BTreeNode[K]'] | tuple[None, None]:
+    def self_insert(self, key: K) -> tuple[K, "BTreeNode[K]"] | tuple[None, None]:
         self.keys.add(key)
         if len(self.keys) > self.order - 1:
             mid_index = len(self.keys) // 2
             mid_key = self.keys.pop(mid_index)
-            
+
             # split keys
             rhs_node = BTreeNode[K](self.order, self.keys[mid_index:])
             self.keys = SortedList(self.keys[:mid_index])
 
             # split children
             if len(self.children) > 0:
-                rhs_node.children = self.children[mid_index + 1:]
-                self.children = self.children[:mid_index + 1]
+                rhs_node.children = self.children[mid_index + 1 :]
+                self.children = self.children[: mid_index + 1]
 
             return mid_key, rhs_node
         return None, None
 
-    def insert(self, key: K) -> tuple[K, 'BTreeNode[K]'] | tuple[None, None]:
+    def insert(self, key: K) -> tuple[K, "BTreeNode[K]"] | tuple[None, None]:
         """Insert a key into node. If full, remove & return middle key"""
         # Index of interest
         idx = self.keys.bisect_left(key)
@@ -57,7 +58,7 @@ class BTreeNode(Generic[K]):
         # If leaf node, insert here
         if len(self.children) == 0:
             return self.self_insert(key)
-        
+
         # recurse to child & capture potential middle key
         middle_key, new_rhs_child = self.children[idx].insert(key)
         if middle_key is not None:
@@ -93,9 +94,58 @@ class BTree(Generic[K]):
             new_root.children = [self.root, new_rhs]
             self.root = new_root
 
-
     def exists(self, key: K) -> bool:
         return self.root.exists(key)
 
     def delete(self, key: K) -> Optional[K]:
         pass
+
+
+def serialize(tree: BTree[K]) -> List[int | K]:
+    """
+    Serialize B-tree with DFS pattern. Gives a flatten list of the form:[
+        N_KEYS: int,
+        HAS_CHILDREN: bool,
+        KEYS: List[int],
+        CHILDREN: List[recurse N_KEYS + 1 times...]
+    ]
+    """
+    sbt: List[int | K] = [tree.order]
+
+    def serialize_dfs(node: BTreeNode[K]) -> List[int | K]:
+        sbt: List[int | K] = []
+        n_keys = len(node.keys)
+        sbt.append(n_keys)
+        sbt.append(len(node.children) > 0)
+        sbt.extend(node.keys)
+        for child in node.children:
+            sbt.extend(serialize_dfs(child))
+        return sbt
+
+    sbt.extend(serialize_dfs(tree.root))
+    return sbt
+
+
+def deserialize(sbt: List[int | K]) -> BTree[K]:
+    """
+    Deserialize B-tree from a list of the form given by `serialize`
+    """
+    order = sbt.pop(0)
+    tree = BTree(order)
+
+    def deserialize_dfs(sbt: List[int | K]) -> BTreeNode[K]:
+        n_keys = sbt.pop(0)
+        has_children = sbt.pop(0)
+
+        node = BTreeNode(order)
+        node.keys = sbt[:n_keys]
+        del sbt[:n_keys]
+        if has_children:
+            for _ in range(n_keys + 1):
+                child = deserialize_dfs(sbt)
+                node.children.append(child)
+        return node
+
+    root = deserialize_dfs(sbt)
+    tree.root = root
+    return tree
