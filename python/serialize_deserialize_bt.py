@@ -22,12 +22,12 @@ class Codec:
         return agg + val + ","
 
     def serialize(self, root):
-        """Encodes a tree to a single string.
+        """
+        Encodes a tree to a single string.
 
         :type root: TreeNode
         :rtype: str
         """
-        # agg = f"{root.val if root else "_"},"
         agg = self.append_node("", root)
 
         stack = [root] if root else []
@@ -35,7 +35,6 @@ class Codec:
             node = stack.pop(0)
             agg = self.append_node(agg, node.left)
             agg = self.append_node(agg, node.right)
-            # agg += f"{node.left.val if node.left else "_"},{node.right.val if node.right else "_"},"
             if node.left:
                 stack.append(node.left)
             if node.right:
@@ -44,14 +43,12 @@ class Codec:
 
     def get_node(self, data):
         """
-        Gets a node given the value at the front of data. Returns a tuple of the node & its value's length in the string
+        Gets a node given the value at the front of data.
+        Returns a tuple of the node & its value's length in the string
         """
         if data[0] == "_":
             return None, 1
         agg, pos = "", 0
-        # if data[0] == "-":
-        #     agg = "-"
-        #     pos = 1
 
         while isnumeric(data[pos]):
             agg += data[pos]
@@ -60,12 +57,12 @@ class Codec:
         return TreeNode(int(agg)), pos
 
     def deserialize(self, data):
-        """Decodes your encoded data to tree.
+        """
+        Decodes your encoded data to tree.
 
         :type data: str
         :rtype: TreeNode
         """
-        # root = TreeNode(int(data[0])) if data[0] != "_" else None
         root, cut_len = self.get_node(data)
 
         stack = [root]
@@ -73,7 +70,6 @@ class Codec:
             node = stack.pop(0)
             if not node:
                 continue
-
             data = data[cut_len + 1 :]
             node.left, cut_len = self.get_node(data)
             data = data[cut_len + 1 :]
