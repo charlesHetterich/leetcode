@@ -28,7 +28,7 @@ Notes on Merkle structures as well as Substrate storage in general
 import hashlib
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 
 EncodablePrim = str | bytes | bytearray | int | float | bool
@@ -77,21 +77,155 @@ def key_from_bytes(bytes: bytes, base: TrieBase = TrieBase.BASE16) -> str:
 
 @dataclass
 class MerkleNode:
-    key: str
-    child_hashes: list[hashlib.blake2b]
-    value: Optional[bytes] = None
+    """
+    Represents a node in a Merkle tree.
+
+    Attributes:
+        children (dict[str, hashlib.blake2b]): A dictionary where keys are patricia trie paths given as
+                                               partial keys, and values are the hashes of the child nodes,
+                                               which give the keys in a KVDB.
+        value (Optional[bytes]): The value stored in the node, if any.
+
+    Assumptions:
+        - All keys in `children` have at lest one character
+    """
+
+    children: dict[str, hashlib.blake2b] = {}
+    value: Optional[Any] = None
 
     def hash(self) -> hashlib.blake2b:
-        return hashlib.blake2b((self.key, self.child_hashes, self.value))
+        """Hash of [header, key, children, value]"""
+        pass
+        # return hashlib.blake2b((self.partial_key, self.child_hashes, self.value))
+
+
+def best_prefix(s1, s2):
+    """Find the longest common prefix of two strings"""
+    prefix = []
+    for c1, c2 in zip(s1, s2):
+        if c1 == c2:
+            prefix.append(c1)
+        else:
+            break
+    return "".join(prefix)
 
 
 class MerklizedStorage:
-    """Provable Key-value DB queried with merkle structure"""
+    """
+    Provable Key-value DB queried with Patricia Trie Merkle based algorithm
+    """
 
     def __init__(self, base: TrieBase = TrieBase.BASE16):
-        self.KVDB: dict[str, MerkleNode] = {}
+        """Initialize storage with root"""
+        self.base = base
+        self.KVDB: dict[hashlib.blake2b, MerkleNode] = {}
+        root = MerkleNode()
+        self.root_hash = root.hash()
+        self.KVDB[self.root_hash] = root
 
-    def get(self, key: Encodable) -> Optional[bytes]:
-        """Get the value for a given key."""
-        encoded_key = encode(key)
-        return self.KVDB.get(encoded_key.hex(), None)
+    def pth_from_key(self, key: Encodable) -> str:
+        """Convert a key to a Patricia Trie path."""
+        return key_from_bytes(encode(key), self.base)
+
+    def read(self, db_key: hashlib.blake2b) -> Optional[MerkleNode]:
+        """Read a node from the database given its hash"""
+        return self.KVDB.get(db_key)
+
+    def write(
+        self, node: MerkleNode, old_db_key: Optional[hashlib.blake2b] = None
+    ) -> hashlib.blake2b:
+        """Write a node to the database given its hash"""
+        if old_db_key:
+            del self.KVDB[old_db_key]
+        new_hash = node.hash()
+        self.KVDB[new_hash] = node
+        return new_hash
+
+    def get_node(self, key: Encodable) -> Optional[MerkleNode]:
+        """Get the value for a given key"""
+        pth = self.pth_from_key(key)
+
+        # Start traversal at root node (expect root to exist)
+        node = self.read(self.root_hash)
+        while pth:
+            # Select next child
+            next_node = None
+            for partial_key, child_hash in node.children.items():
+                if pth[0] == partial_key[0]:
+                    if pth.startswith(partial_key):
+                        next_node = self.read(child_hash)
+                        pth = pth[len(partial_key) :]
+                    break
+
+            # If we're here, that means we expected to traverse deeper but failed.
+            # Ignore current `node` & return `None`
+            if not next_node:
+                return None
+            node = next_node
+
+        # If we reach here, we have found the node we expected
+        return node
+
+    def get(self, key: Encodable):
+        """Get the value for a given key"""
+        node = self.get_node(key)
+        if node:
+            return node.value
+        return None
+
+    def set(self, key: Encodable, value):
+        """
+        Insert or update KVDB entry with new data given its key, and re-hash all nodes along the trie path
+        """
+        pth = self.pth_from_key(key)
+
+        edge, node = "", self.read(self.root_hash)
+        node_stack: list[tuple[str, MerkleNode]] = []
+        uedge, uhash = None, None
+        while not uedge:
+            node_stack.append((edge, node))
+            # Select next child
+            for partial_key, child_hash in node.children.items():
+                # Found child path. Stop loop here.
+                if pth[0] == partial_key[0]:
+                    # Compare prefixes
+                    pfx = best_prefix(pth, partial_key)
+                    pth = pth[len(pfx) :]
+
+                    # Continue traversal
+                    if pth and len(pfx) == len(partial_key):
+                        # Found child node. Continue traversal
+                        edge = partial_key
+                        node = self.read(child_hash)
+
+                    # Split current node
+                    elif pth and len(pfx) < len(partial_key):
+                        pass
+
+                    # Exact match— overwrite value
+                    elif not pth and len(pfx) == len(partial_key):
+                        # Found node. Update value
+                        node.value = value
+                        uedge = key
+                        uhash = self.write(node, child_hash)
+                    break
+            # Add new leaf to current node
+            else:
+                node.children[pth] = hash(value)
+                node.value = value
+                uedge = key
+                uhash = self.write(node, child_hash)
+                break
+
+        # Update hashes up the stack
+
+    def delete(self, key: Encodable) -> None:
+        """
+        Delete value from KVDB given its key, and re-hash all nodes along the merkle path
+        """
+        pth = self.pth_from_key(key)
+        node_stack = []
+
+    def prove(self, key: Encodable, value: bytes) -> bool:
+        t_pth = self.pth_from_key(key)
+        pass
